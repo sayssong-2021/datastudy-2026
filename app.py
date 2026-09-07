@@ -5,6 +5,9 @@ def initialize_state() -> None:
     """세션에서 사용할 할 일 목록을 처음 한 번만 준비합니다."""
     if "todos" not in st.session_state:
         st.session_state.todos = []
+    for todo in st.session_state.todos:
+        if "status" not in todo:
+            todo["status"] = "완료" if todo.get("completed", False) else "미완료"
 
 
 def add_todo(title: str) -> None:
@@ -16,6 +19,7 @@ def add_todo(title: str) -> None:
                 "id": st.session_state.next_todo_id,
                 "title": cleaned_title,
                 "completed": False,
+                "status": "미완료",
             }
         )
         st.session_state.next_todo_id += 1
@@ -26,6 +30,16 @@ def toggle_todo(todo_id: int, completed: bool) -> None:
     for todo in st.session_state.todos:
         if todo["id"] == todo_id:
             todo["completed"] = completed
+            todo["status"] = "완료" if completed else "미완료"
+            break
+
+
+def update_todo_status(todo_id: int, status: str) -> None:
+    """지정한 할 일의 진행 상태를 변경합니다."""
+    for todo in st.session_state.todos:
+        if todo["id"] == todo_id:
+            todo["status"] = status
+            todo["completed"] = status == "완료"
             break
 
 
@@ -58,13 +72,19 @@ def main() -> None:
             st.warning("할 일 내용을 입력해 주세요.")
 
     total_count = len(st.session_state.todos)
-    completed_count = sum(todo["completed"] for todo in st.session_state.todos)
-    incomplete_count = total_count - completed_count
+    completed_count = sum(
+        todo.get("status") == "완료" for todo in st.session_state.todos
+    )
+    in_progress_count = sum(
+        todo.get("status") == "진행중" for todo in st.session_state.todos
+    )
+    incomplete_count = total_count - completed_count - in_progress_count
 
-    summary_columns = st.columns(3)
+    summary_columns = st.columns(4)
     summary_columns[0].metric("전체", total_count)
     summary_columns[1].metric("미완료", incomplete_count)
-    summary_columns[2].metric("완료", completed_count)
+    summary_columns[2].metric("진행중", in_progress_count)
+    summary_columns[3].metric("완료", completed_count)
 
     st.subheader("목록")
     if not st.session_state.todos:
@@ -72,20 +92,31 @@ def main() -> None:
         return
 
     for todo in st.session_state.todos:
-        todo_columns = st.columns([0.12, 0.73, 0.15])
+        todo_columns = st.columns([0.12, 0.48, 0.25, 0.15])
         is_completed = todo_columns[0].checkbox(
             "완료",
-            value=todo["completed"],
+            value=todo.get("status") == "완료",
             key=f"completed_{todo['id']}",
             label_visibility="collapsed",
         )
-        if is_completed != todo["completed"]:
+        if is_completed != (todo.get("status") == "완료"):
             toggle_todo(todo["id"], is_completed)
             st.rerun()
 
-        title = f"~~{todo['title']}~~" if todo["completed"] else todo["title"]
+        title = f"~~{todo['title']}~~" if todo.get("status") == "완료" else todo["title"]
         todo_columns[1].markdown(title)
-        if todo_columns[2].button("삭제", key=f"delete_{todo['id']}"):
+        status = todo_columns[2].selectbox(
+            "상태",
+            options=["미완료", "진행중", "완료"],
+            index=["미완료", "진행중", "완료"].index(todo.get("status", "미완료")),
+            key=f"status_{todo['id']}",
+            label_visibility="collapsed",
+        )
+        if status != todo.get("status", "미완료"):
+            update_todo_status(todo["id"], status)
+            st.rerun()
+
+        if todo_columns[3].button("삭제", key=f"delete_{todo['id']}"):
             delete_todo(todo["id"])
             st.rerun()
 
